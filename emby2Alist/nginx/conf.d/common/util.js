@@ -605,8 +605,41 @@ function getDeviceId(rArgs) {
  * @returns "/AList/xxx.mkv" or "AList/xxx.mkv" or ""
  */
 function getFilePathPart(url) {
-  const matches = url.match(/(?:\/False\/|\/d\/)(.*)/g);
+  const matches = url.match(/(?:\/False\/|\/d\/)(.*)/);
   return matches ? matches[1] : "";
+}
+
+/**
+ * Parses the URL and returns an object with various components.
+ * @param {string} url The URL string to parse.
+ * @returns {Object} An object containing protocol, username, password, host, port, pathname, search, and hash.
+ */
+function parseUrl(url) {
+  const regex = /^(?:(\w+)?:\/\/)?(?:(\w+):(\w+)@)?(?:www\.)?([^:\/\n?#]+)(?::(\d+))?(\/[^?\n]*)?(\?[^#\n]*)?(#.*)?$/i;
+  const match = url.match(regex);
+  if (match) {
+      const protocol = match[1] || 'http';
+      const username = match[2] || '';
+      const password = match[3] || '';
+      const host = match[4];
+      const port = match[5] || '';
+      const pathname = match[6] || '';
+      const search = match[7] || '';
+      const hash = match[8] || '';
+      const fullProtocol = `${protocol}:`;
+      const fullPort = port || (fullProtocol === 'https:' ? '443' : '80');
+      return {
+          protocol: fullProtocol,
+          username,
+          password,
+          host,
+          port: fullPort,
+          pathname,
+          search,
+          hash
+      };
+  }
+  return null;
 }
 
 /**
@@ -696,6 +729,7 @@ export default {
   cost,
   getDeviceId,
   getFilePathPart,
+  parseUrl,
   calculateHMAC,
   addAlistSign,
   checkAndGetRealpathSync,
