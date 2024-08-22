@@ -13,6 +13,7 @@ const routeCacheConfig = {
   // 短时间内同客户端访问相同资源不会再做判断和请求 alist,有限的防抖措施,出现问题可以关闭此选项
   enable: true,
   // 二级缓存开关,仅针对直链,添加阶段为进入单集详情页,clientSelfAlistRule 中的和首页直接播放的不生效
+  // 非 web 端且限 UA 的不建议使用,生效率太低,因部分客户端详情页 UA 和播放器 UA 存在不同的情况
   enableL2: false,
   // 缓存键表达式,默认值好处是命中范围大,但会导致 routeRule 中针对设备的规则失效,多个变量可自行组合修改,冒号分隔
   // 注意 jellyfin 是小写开头 mediaSourceId
@@ -51,8 +52,8 @@ const routeRule = [
   // ["transcode", "115-local", "r.args.X-Emby-Client", 0, strHead.xEmbyClients.maybeProxy],
   // ["transcode", "115-local", "filePath", 0, "/mnt/115"],
   // ["block", "filePath", 0, "/mnt/sda4"],
-  // 此条规则代表大于等于 3Mbps 码率的走转码,xMediaSource 为固定值,平方使用双星号表示,无意义减加仅为示例
-  // ["transcode", "r.xMediaSource.Bitrate", ">=", 3 * 1024 ** 2 -(1 * 1024 ** 2) + (1 * 1024 ** 2)],
+  // 此条规则代表大于等于 3Mbps 码率的走转码,XMedia 为固定值,平方使用双星号表示,无意义减加仅为示例
+  // ["transcode", "r.XMedia.Bitrate", ">=", 3 * 1024 ** 2 -(1 * 1024 ** 2) + (1 * 1024 ** 2)],
 ];
 
 // 路径映射,会在 mediaMountPath 之后从上到下依次全部替换一遍,不要有重叠,注意 /mnt 会先被移除掉了

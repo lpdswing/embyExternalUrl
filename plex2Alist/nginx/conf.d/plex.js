@@ -4,6 +4,7 @@
 
 import config from "./constant.js";
 import util from "./common/util.js";
+import urlUtil from "./common/url-util.js";
 import events from "./common/events.js";
 import ngxExt from "./modules/ngx-ext.js";
 
@@ -28,7 +29,7 @@ async function redirect2Pan(r) {
   if (routeCacheConfig.enable) {
     // webClient download only have itemId on pathParam
     let cacheKey = util.parseExpression(r, routeCacheConfig.keyExpression) ?? r.uri;
-    r.log(`redirect2Pan cacheKey: ${cacheKey}`);
+    r.log(`redirect2Pan routeCacheKey: ${cacheKey}`);
     let routeDictKey;
     let cachedLink;
     for (let index = 1; index < 3; index++) {
@@ -56,7 +57,7 @@ async function redirect2Pan(r) {
   const itemInfo = await util.cost(getPlexItemInfo, r);
   let mediaServerRes;
   if (itemInfo.filePath) {
-    mediaServerRes = {path: itemInfo.filePath};
+    mediaServerRes = { path: itemInfo.filePath };
     r.warn(`get filePath from cache partInfoDict`);
   } else {
     r.warn(`itemInfoUri: ${itemInfo.itemInfoUri}`);
@@ -95,6 +96,11 @@ async function redirect2Pan(r) {
   }
   r.warn(`mount plex file path: ${mediaServerRes.path}`);
 
+  // add Expression Context to r
+  // because plex PartInfo cache only has path, not implemented temporarily
+  r[util.ARGS.rXMediaKey] = mediaServerRes.media;
+  ngx.log(ngx.WARN, `add plex Media to r: ${JSON.stringify(r[util.ARGS.rXMediaKey])}`);
+
   // routeRule, not must before mediaPathMapping, before is simple, can ignore mediaPathMapping
   const routeMode = util.getRouteMode(r, mediaServerRes.path, false, notLocal);
   r.warn(`getRouteMode: ${routeMode}`);
@@ -112,39 +118,13 @@ async function redirect2Pan(r) {
     mediaServerRes.path = strmInnerText;
   }
 
-  let isRemote = !util.isAbsolutePath(mediaServerRes.path);
-  let mediaPathMapping = config.mediaPathMapping;
   // file path mapping
-  config.mediaMountPath.map(s => s && mediaPathMapping.unshift([0, 0, s, ""]));
-  r.warn(`mediaPathMapping: ${JSON.stringify(mediaPathMapping)}`);
-  let mediaItemPath = mediaServerRes.path;
-  let mediaPathMappingRule;
-  mediaPathMapping.map(arr => {
-    mediaPathMappingRule = Number.isInteger(arr[0]) ? null : arr.splice(0, 1)[0];
-    if ((arr[1] == 0 && notLocal)
-      || (arr[1] == 1 && (!notLocal || isRemote))
-      || (arr[1] == 2 && (!notLocal || !isRemote))) {
-        return;
-    }
-    if (mediaPathMappingRule) {
-      let hitRule = util.simpleRuleFilter(
-        r, mediaPathMappingRule, mediaItemPath, 
-        util.SOURCE_STR_ENUM.filePath, "mediaPathMappingRule"
-      );
-      if (!(hitRule && hitRule.length > 0)) { return; }
-    }
-    mediaItemPath = util.strMapping(arr[0], mediaItemPath, arr[2], arr[3]);
-  });
-  // windows filePath to URL path, warn: markdown log text show \\ to \
-  if (mediaItemPath.startsWith("\\")) {
-    r.warn(`windows filePath to URL path \\ => /`);
-    mediaItemPath = mediaItemPath.replaceAll("\\", "/");
-  }
-  r.warn(`mapped plex file path: ${mediaItemPath}`);
+  let mediaItemPath = util.doMediaPathMapping(mediaServerRes.path, notLocal);
+  ngx.log(ngx.WARN, `mapped plex file path: ${mediaItemPath}`);
 
   // strm file inner remote link redirect,like: http,rtsp
   // not only strm, mediaPathMapping maybe used remote link
-  isRemote = !util.isAbsolutePath(mediaItemPath);
+  const isRemote = !util.isAbsolutePath(mediaItemPath);
   if (isRemote) {
     let rule = util.simpleRuleFilter(
       r, config.redirectStrmLastLinkRule, mediaItemPath, 
@@ -167,7 +147,7 @@ async function redirect2Pan(r) {
       }
     }
     // need careful encode filePathPart, other don't encode
-    const filePathPart = util.getFilePathPart(mediaItemPath);
+    const filePathPart = urlUtil.getFilePathPart(mediaItemPath);
     if (filePathPart) {
       r.warn(`is CloudDrive/AList link, encodeURIComponent filePathPart before: ${mediaItemPath}`);
       mediaItemPath = mediaItemPath.replace(filePathPart, encodeURIComponent(filePathPart));
@@ -253,7 +233,7 @@ async function fetchAlistPathApi(alistApiPath, alistFilePath, alistToken, ua) {
     password: "",
   };
   try {
-    const urlParts = util.parseUrl(alistApiPath);
+    const urlParts = urlUtil.parseUrl(alistApiPath);
     const hostValue = `${urlParts.host}:${urlParts.port}`;
     ngx.log(ngx.WARN, `fetchAlistPathApi add Host: ${hostValue}`);
     const response = await ngx.fetch(alistApiPath, {
@@ -277,6 +257,10 @@ async function fetchAlistPathApi(alistApiPath, alistFilePath, alistToken, ua) {
         if (result.data.raw_url) {
           return result.data.raw_url;
         }
+        // alist /api/fs/link
+        if (result.data.header.Cookie) {
+          return result.data;
+        }
         // alist /api/fs/list
         return result.data.content.map((item) => item.name).join(",");
       }
@@ -293,7 +277,7 @@ async function fetchAlistPathApi(alistApiPath, alistFilePath, alistToken, ua) {
 }
 
 async function cachePreload(r, url, cacheLevel) {
-  url = util.appendUrlArg(url, util.ARGS.cacheLevleKey, cacheLevel);
+  url = urlUtil.appendUrlArg(url, util.ARGS.cacheLevleKey, cacheLevel);
   ngx.log(ngx.WARN, `cachePreload Level: ${cacheLevel}`);
   preload(r, url);
 }
@@ -301,7 +285,7 @@ async function cachePreload(r, url, cacheLevel) {
 async function preload(r, url) {
   events.njsOnExit(`preload`);
 
-  url = util.appendUrlArg(url, util.ARGS.internalKey, "1");
+  url = urlUtil.appendUrlArg(url, util.ARGS.internalKey, "1");
   const ua = r.headersIn["User-Agent"];
   ngx.fetch(url, {
     method: "HEAD",
@@ -325,8 +309,9 @@ async function preload(r, url) {
 
 async function fetchPlexFilePath(itemInfoUri, mediaIndex, partIndex) {
   let rvt = {
-    "message": "success",
-    "path": ""
+    message: "success",
+    path: "",
+    media: null,
   };
   try {
     const res = await ngx.fetch(itemInfoUri, {
@@ -345,13 +330,15 @@ async function fetchPlexFilePath(itemInfoUri, mediaIndex, partIndex) {
         return rvt;
       }
       if (!result.MediaContainer.Metadata) {
-        rvt.message = `error: plex_api No search results found`;
+        rvt.message = `error: plex_api not found search results`;
         return rvt;
       }
       // location ~* /library/parts/(\d+)/(\d+)/file, not hava mediaIndex and partIndex
       mediaIndex = mediaIndex ? mediaIndex : 0;
       partIndex = partIndex ? partIndex : 0;
-      rvt.path = result.MediaContainer.Metadata[0].Media[mediaIndex].Part[partIndex].file;
+      const media = result.MediaContainer.Metadata[0].Media[mediaIndex];
+      rvt.path = media.Part[partIndex].file;
+      rvt.media = media;
       return rvt;
     } else {
       rvt.message = `error: plex_api ${res.status} ${res.statusText}`;
@@ -445,7 +432,12 @@ async function fetchStrmInnerText(r) {
 async function plexApiHandler(r) {
   events.njsOnExit(`plexApiHandler: ${r.uri}`);
 
-  const subR = await r.subrequest(util.proxyUri(r.uri), {
+  if (!config.transcodeConfig.enable && r.variables.isDecision === "1") {
+    // default modify direct play supports all true
+    r.variables.request_uri += "&directPlay=1&directStream=1";
+    r.headersOut["X-Modify-DirectPlay-Success"] = true;
+  }
+  const subR = await r.subrequest(urlUtil.proxyUri(r.uri), {
     method: r.method,
   });
   const contentType = subR.headersOut["Content-Type"];
@@ -596,7 +588,7 @@ function routeCachePartInfo(r, partKey) {
   if (config.routeCacheConfig.enableL2 
     && r.uri.startsWith("/library/metadata")) {
     // async cachePreload
-    cachePreload(r, util.getCurrentRequestUrlPrefix(r) + partKey, util.CHCHE_LEVEL_ENUM.L2);
+    cachePreload(r, urlUtil.getCurrentRequestUrlPrefix(r) + partKey, util.CHCHE_LEVEL_ENUM.L2);
   }
 }
 
