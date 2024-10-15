@@ -63,8 +63,11 @@ async function redirect2Pan(r) {
   // strm file internal text maybe encode
   r.warn(`notLocal: ${embyRes.notLocal}`);
   if (embyRes.notLocal) {
-    embyRes.path = decodeURIComponent(embyRes.path);
-    r.warn(`notLocal decodeURIComponent embyRes.path`);
+    const filePathPart = urlUtil.getFilePathPart(embyRes.path);
+    if (filePathPart) {
+      r.warn(`notLocal is CloudDrive/AList link, decodeURIComponent embyRes.path before: ${embyRes.path}`);
+      embyRes.path = decodeURIComponent(embyRes.path);
+    }
   }
 
   // check symlinkRule
@@ -214,7 +217,7 @@ async function transferPlaybackInfo(r) {
       r.headersOut["Content-Type"] = "application/json;charset=utf-8";
       return r.return(200, JSON.stringify(vMediaSources));
     }
-  }  
+  }
   
   let start = Date.now();
   const isPlayback = r.args.IsPlayback === "true";
