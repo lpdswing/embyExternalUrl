@@ -72,11 +72,14 @@ async function redirect2Pan(r) {
   // strm file internal text maybe encode
   r.warn(`notLocal: ${embyRes.notLocal}`);
   if (embyRes.notLocal) {
-    // need careful encode filePathPart, other don't encode
     const filePathPart = urlUtil.getFilePathPart(embyRes.path);
     if (filePathPart) {
-      r.warn(`notLocal:true and is CloudDrive/AList link, decodeURIComponent filePathPart before: ${embyRes.path}`);
+      // need careful encode filePathPart, other don't encode
+      r.warn(`is CloudDrive/AList link, decodeURIComponent filePathPart before: ${embyRes.path}`);
       embyRes.path = embyRes.path.replace(filePathPart, decodeURIComponent(filePathPart));
+    } else {
+      r.warn(`not is CloudDrive/AList link, decodeURIComponent filePath before: ${embyRes.path}`);
+      embyRes.path = decodeURIComponent(embyRes.path);
     }
   }
 
@@ -370,14 +373,24 @@ function modifyDirectPlayInfo(r, upstreamBody) {
               : true
           )
         ) {
-          r.warn(`client reported and server judgment to transcode, cover routeMode`);
+          r.warn(`client reported and upstream judgment to transcode, cover routeMode`);
           source.XRouteMode = util.ROUTE_ENUM.transcode; // for debug
           modifyDirectPlaySupports(source, false);
           continue;
         }
-      } else if (util.ROUTE_ENUM.transcode === routeMode
-        || (util.ROUTE_ENUM.proxy === routeMode && isLive)
-      ) {
+      } else if (util.ROUTE_ENUM.transcode === routeMode) {
+        if (!source.TranscodingUrl) {
+          // can force modify TranscodingUrl, but following upstream is better
+          // because upstream self have a WebUI settings
+          ngx.log(ngx.WARN, "upstream MediaSource.TranscodingUrl is empty,judgment to DirectPlay");
+          source.XRouteMode = util.ROUTE_ENUM.redirect; // for debug
+        } else {
+          r.warn(`routeMode modify playback supports`);
+          // because clients prefer SupportsDirectPlay > SupportsDirectStream > SupportsTranscoding
+          modifyDirectPlaySupports(source, false);
+          continue;
+        }
+      } else if (util.ROUTE_ENUM.proxy === routeMode && isLive) {
         r.warn(`routeMode modify playback supports`);
         // because clients prefer SupportsDirectPlay > SupportsDirectStream > SupportsTranscoding
         modifyDirectPlaySupports(source, false);
@@ -437,7 +450,7 @@ function modifyDirectStreamUrl(r, source) {
   }
   source.DirectStreamUrl = urlUtil.generateDirectStreamUrl(r, source.Id, resourceKey);
   // a few players not support special character
-  source.DirectStreamUrl = encodeURI(source.DirectStreamUrl);
+  source.DirectStreamUrl = encodeURIComponent(source.DirectStreamUrl);
   source.XModifyDirectStreamUrlSuccess = true; // for debug
 }
 

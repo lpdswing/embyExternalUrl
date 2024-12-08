@@ -85,11 +85,14 @@ async function redirect2Pan(r) {
   const notLocal = util.checkIsStrmByPath(mediaServerRes.path);
   r.warn(`notLocal: ${notLocal}`);
   if (notLocal) {
-    // need careful encode filePathPart, other don't encode
     const filePathPart = urlUtil.getFilePathPart(mediaServerRes.path);
     if (filePathPart) {
-      r.warn(`notLocal:true and is CloudDrive/AList link, decodeURIComponent filePathPart before: ${mediaServerRes.path}`);
+      // need careful encode filePathPart, other don't encode
+      r.warn(`is CloudDrive/AList link, decodeURIComponent filePathPart before: ${mediaServerRes.path}`);
       mediaServerRes.path = mediaServerRes.path.replace(filePathPart, decodeURIComponent(filePathPart));
+    } else {
+      r.warn(`not is CloudDrive/AList link, decodeURIComponent filePath before: ${mediaServerRes.path}`);
+      mediaServerRes.path = decodeURIComponent(mediaServerRes.path);
     }
   }
 
@@ -416,7 +419,7 @@ async function getPlexItemInfo(r) {
       const plexRes = await fetchPlexFileFullName(`${plexHost}${r.uri}?download=1&${util.ARGS.plexTokenKey}=${api_key}`);
       if (!plexRes.startsWith("error")) {
         const plexFileName = plexRes.substring(0, plexRes.lastIndexOf("."));
-        itemInfoUri = `${plexHost}/search?query=${encodeURI(plexFileName)}&${util.ARGS.plexTokenKey}=${api_key}`;
+        itemInfoUri = `${plexHost}/search?query=${encodeURIComponent(plexFileName)}&${util.ARGS.plexTokenKey}=${api_key}`;
       } else {
         r.warn(plexRes);
       }
